@@ -1,5 +1,5 @@
 <template>
-    <q-editor v-model="content" min-height="5rem" @update:model-value="on_change" />
+    <q-editor ref="editor" v-model="content" min-height="5rem" @update:model-value="on_change" />
 </template>
 
 <script setup lang="ts">
@@ -8,18 +8,22 @@ import * as Y from 'yjs';
 import { WebrtcProvider } from 'y-webrtc';
 import { ref } from 'vue';
 import * as awarenessProtocol from 'y-protocols/awareness.js'
-import { SSL_OP_SSLEAY_080_CLIENT_DH_BUG } from 'constants';
+import { type QEditor } from 'quasar';
+import * as Diff from 'diff';
+
+console.log({ Diff })
 
 const ydoc = new Y.Doc();
 const ytext = ydoc.getText();
 
 const awareness = new awarenessProtocol.Awareness(ydoc);
 
-const content = ref('');
+const editor = ref<QEditor>();
+const content = ref(ytext.toString());
 
 //const provider = new WebrtcProvider('your-room-name', ydoc, { signaling: ['wss://signaling.yjs.dev', 'wss://y-webrtc-signaling-eu.herokuapp.com', 'wss://y-webrtc-signaling-us.herokuapp.com'] });
 const provider = new WebrtcProvider(
-    'your-room-name',
+    'your-room-name22',
     ydoc,
     {
         signaling: ['ws://localhost:3000/'],
@@ -53,23 +57,50 @@ provider.on('synced', synced => {
 ytext.observe(text_observer);
 
 // enable logging for all modules
-localStorage.log = 'true';
+//localStorage.log = 'true';
 
 // @ts-ignore
 window.example = { provider, ydoc, ytext }
 
 function text_observer({ transaction, delta }) {
-    if (transaction.origin === ydoc) {
+    if (!transaction.origin) {
         console.log('same origin doc, ignoring')
         return;
     }
 
-    console.log('ytext updated: ', ytext.toJSON(), { delta });
+    console.log('updating', { transaction });
+    content.value = ytext.toString();
 }
 
-function on_change() {
-    const text = content.value;
+function on_change(text) {
     console.log('on_change', { text });
-    ytext.insert(0, text)
+
+    const diff = Diff.diffChars(ytext.toString(), text);
+
+    console.log({ diff })
+
+    let offset = 0;
+
+    const insert = part => {
+        ytext.insert(offset, part.value);
+        return offset + part.count;
+    };
+
+    const remove = part => {
+        ytext.delete(offset, part.count);
+        return offset - part.count;
+    }
+
+
+    diff.forEach((part) => {
+        console.log({ part, offset });
+        part.added
+            ? offset = insert(part)
+            : part.removed
+                ? offset = remove(part)
+                : offset += part.count; //noop
+    });
+
+    console.log(ytext.toString());
 }
 </script>
